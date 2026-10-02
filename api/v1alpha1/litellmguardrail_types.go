@@ -49,7 +49,11 @@ type LiteLLMGuardrailSpec struct {
 	// back. No Python class is required. Use `apiBase` for the endpoint,
 	// `apiKeySecretRef` for Bearer auth, `unreachableFallback` for failure
 	// behavior, and `params` for `additional_provider_specific_params`.
-	// +kubebuilder:validation:Enum=aporia;lakera;bedrock;presidio;guardrails_ai;azure;llm_guard;llamaguard;google_text_moderation;custom_guardrail;generic_guardrail_api
+	//
+	// "litellm_content_filter" is LiteLLM's built-in regex/keyword filter. It
+	// runs inside the proxy with no external service or API key; configure it
+	// through `params` (e.g. `patterns`, `blocked_words`, `categories`).
+	// +kubebuilder:validation:Enum=aporia;lakera;bedrock;presidio;guardrails_ai;azure;llm_guard;llamaguard;google_text_moderation;custom_guardrail;generic_guardrail_api;litellm_content_filter
 	Provider string `json:"provider"`
 
 	// GuardrailClass is the dotted Python import path to a litellm

@@ -1394,6 +1394,48 @@ func TestGenerateProxyConfig_GuardrailStructuredParams(t *testing.T) {
 	}
 }
 
+func TestGenerateProxyConfig_GuardrailsLiteLLMContentFilter(t *testing.T) {
+	instance := newTestInstance()
+	defaultOn := true
+	guardrails := []litellmv1alpha1.LiteLLMGuardrail{
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "pii-mask", Namespace: "default"},
+			Spec: litellmv1alpha1.LiteLLMGuardrailSpec{
+				InstanceRef:   litellmv1alpha1.InstanceRef{Name: "test-instance"},
+				GuardrailName: "pii-mask",
+				Provider:      "litellm_content_filter",
+				Mode:          "pre_call",
+				DefaultOn:     &defaultOn,
+				Params: map[string]apiextensionsv1.JSON{
+					"patterns": {Raw: []byte(`[{"pattern_type":"prebuilt","pattern_name":"email","action":"MASK"},` +
+						`{"pattern_type":"regex","name":"in_pan","pattern":"\\b[A-Z]{5}[0-9]{4}[A-Z]\\b","action":"MASK"}]`)},
+				},
+			},
+		},
+	}
+
+	config := GenerateProxyConfig(instance, guardrails)
+	entries, _ := config["guardrails"].([]map[string]interface{})
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 guardrail entry, got %d", len(entries))
+	}
+	params, _ := entries[0]["litellm_params"].(map[string]interface{})
+	if params["guardrail"] != "litellm_content_filter" || params["mode"] != "pre_call" || params["default_on"] != true {
+		t.Errorf("unexpected guardrail params: %v", params)
+	}
+	if _, ok := params["api_key"]; ok {
+		t.Errorf("content filter needs no api_key, got %v", params["api_key"])
+	}
+	patterns, ok := params["patterns"].([]interface{})
+	if !ok || len(patterns) != 2 {
+		t.Fatalf("expected 2 patterns passed through as a list, got %T (%v)", params["patterns"], params["patterns"])
+	}
+	pan, _ := patterns[1].(map[string]interface{})
+	if pan["pattern"] != `\b[A-Z]{5}[0-9]{4}[A-Z]\b` || pan["action"] != "MASK" {
+		t.Errorf("regex pattern not preserved: %v", pan)
+	}
+}
+
 func TestGenerateProxyConfig_GuardrailsCustomGuardrailClass(t *testing.T) {
 	// For provider=custom_guardrail, litellm_params.guardrail must be the
 	// dotted Python import path from spec.guardrailClass, not the provider
