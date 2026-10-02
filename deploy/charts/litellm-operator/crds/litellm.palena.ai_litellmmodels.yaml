@@ -113,6 +113,18 @@ spec:
                       support instead of returning an error (e.g. `temperature` on reasoning
                       models like the o-series / gpt-5). Applies to this deployment only.
                     type: boolean
+                  existingCredentialName:
+                    description: |-
+                      ExistingCredentialName names a credential that already exists in
+                      LiteLLM's database (created through the Admin UI or /credentials/new)
+                      and is not managed by a LiteLLMCredential CR. Only
+                      `litellm_credential_name` is sent; no API key is read from Kubernetes,
+                      and LiteLLM resolves the credential at request time. Use it to reuse a
+                      provider key that should not be stored in a Secret. apiBase / apiVersion
+                      on this model are still sent. Mutually exclusive with credentialRef and
+                      apiKeySecretRef.
+                    minLength: 1
+                    type: string
                   extraHeaders:
                     additionalProperties:
                       type: string
@@ -210,6 +222,11 @@ spec:
                 required:
                 - model
                 type: object
+                x-kubernetes-validations:
+                - message: existingCredentialName is mutually exclusive with credentialRef
+                    and apiKeySecretRef
+                  rule: '!has(self.existingCredentialName) || (!has(self.credentialRef)
+                    && !has(self.apiKeySecretRef))'
               modelInfo:
                 description: Optional model metadata.
                 properties:

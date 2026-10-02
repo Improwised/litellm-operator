@@ -47,6 +47,7 @@ type LiteLLMModelSpec struct {
 }
 
 // LiteLLMModelParams defines provider-specific model parameters.
+// +kubebuilder:validation:XValidation:rule="!has(self.existingCredentialName) || (!has(self.credentialRef) && !has(self.apiKeySecretRef))",message="existingCredentialName is mutually exclusive with credentialRef and apiKeySecretRef"
 type LiteLLMModelParams struct {
 	// Provider/model string (e.g., "openai/gpt-4", "anthropic/claude-3-opus").
 	Model string `json:"model"`
@@ -72,6 +73,18 @@ type LiteLLMModelParams struct {
 	// model are ignored in favor of the credential's values.
 	// +optional
 	CredentialRef *CredentialRef `json:"credentialRef,omitempty"`
+
+	// ExistingCredentialName names a credential that already exists in
+	// LiteLLM's database (created through the Admin UI or /credentials/new)
+	// and is not managed by a LiteLLMCredential CR. Only
+	// `litellm_credential_name` is sent; no API key is read from Kubernetes,
+	// and LiteLLM resolves the credential at request time. Use it to reuse a
+	// provider key that should not be stored in a Secret. apiBase / apiVersion
+	// on this model are still sent. Mutually exclusive with credentialRef and
+	// apiKeySecretRef.
+	// +optional
+	// +kubebuilder:validation:MinLength=1
+	ExistingCredentialName string `json:"existingCredentialName,omitempty"`
 
 	// Rate limit: requests per minute.
 	// +optional

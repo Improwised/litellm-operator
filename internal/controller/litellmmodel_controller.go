@@ -183,6 +183,13 @@ func (r *LiteLLMModelReconciler) reconcileModel(
 		params.APIBase = cred.apiBase
 		params.APIVersion = cred.apiVersion
 		params.APIKey = cred.apiKey
+	} else if model.Spec.LiteLLMParams.ExistingCredentialName != "" {
+		// A credential that lives only in LiteLLM's DB: send its name and let
+		// LiteLLM resolve the key at request time. Nothing secret is read here.
+		authMode = authModeExistingCredential
+		params.LiteLLMCredentialName = model.Spec.LiteLLMParams.ExistingCredentialName
+		params.APIBase = model.Spec.LiteLLMParams.APIBase
+		params.APIVersion = model.Spec.LiteLLMParams.APIVersion
 	} else {
 		params.APIBase = model.Spec.LiteLLMParams.APIBase
 		params.APIVersion = model.Spec.LiteLLMParams.APIVersion
@@ -371,6 +378,8 @@ func (r *LiteLLMModelReconciler) updateModelHealth(ctx context.Context, apiClien
 const (
 	authModeInline     = "inline"
 	authModeCredential = "credential"
+	// authModeExistingCredential: litellm_credential_name only, no inline key.
+	authModeExistingCredential = "existing-credential"
 
 	// healthStatusUnknown is the status.health value used when the operator has
 	// no health signal for a model (not probed, or not present in /health).

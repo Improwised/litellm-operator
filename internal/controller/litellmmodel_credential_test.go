@@ -151,6 +151,59 @@ var _ = Describe("LiteLLMModel Controller — provider auth payload", func() {
 		Expect(updated.Annotations[AnnotationAuthMode]).To(Equal(authModeInline))
 	})
 
+	It("existingCredentialName auth: sends only the credential name, no inline key", func() {
+		Expect(k8sClient.Create(ctx, &litellmv1alpha1.LiteLLMModel{
+			ObjectMeta: metav1.ObjectMeta{Name: modelName, Namespace: ns},
+			Spec: litellmv1alpha1.LiteLLMModelSpec{
+				InstanceRef: litellmv1alpha1.InstanceRef{Name: instanceName},
+				ModelName:   "deepseek/deepseek-pro-latest",
+				LiteLLMParams: litellmv1alpha1.LiteLLMModelParams{
+					Model:                  "openrouter/~deepseek/deepseek-pro-latest",
+					ExistingCredentialName: "openrouter-credential",
+				},
+			},
+		})).To(Succeed())
+
+		var captured litellm.ModelCreateRequest
+		mock := litellm.NewMockClient()
+		mock.MockModels.CreateFunc = func(_ context.Context, req litellm.ModelCreateRequest) (*litellm.ModelCreateResponse, error) {
+			captured = req
+			return &litellm.ModelCreateResponse{ModelID: "m-existing"}, nil
+		}
+		r := &LiteLLMModelReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(),
+			LiteLLMClientFactory: func(string, string, ...litellm.ClientOption) litellm.Client { return mock }}
+
+		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: modelKey})
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(captured.LiteLLMParams.LiteLLMCredentialName).To(Equal("openrouter-credential"))
+		Expect(captured.LiteLLMParams.APIKey).To(BeEmpty())
+		Expect(captured.LiteLLMParams.Model).To(Equal("openrouter/~deepseek/deepseek-pro-latest"))
+
+		updated := &litellmv1alpha1.LiteLLMModel{}
+		Expect(k8sClient.Get(ctx, modelKey, updated)).To(Succeed())
+		Expect(updated.Annotations[AnnotationAuthMode]).To(Equal(authModeExistingCredential))
+		Expect(updated.Status.LiteLLMModelID).To(Equal("m-existing"))
+	})
+
+	It("rejects existingCredentialName combined with credentialRef or apiKeySecretRef", func() {
+		for _, params := range []litellmv1alpha1.LiteLLMModelParams{
+			{Model: "openrouter/x", ExistingCredentialName: "c", CredentialRef: &litellmv1alpha1.CredentialRef{Name: credName}},
+			{Model: "openrouter/x", ExistingCredentialName: "c", APIKeySecretRef: &litellmv1alpha1.SecretKeyRef{Name: modelSecret, Key: "k"}},
+		} {
+			err := k8sClient.Create(ctx, &litellmv1alpha1.LiteLLMModel{
+				ObjectMeta: metav1.ObjectMeta{Name: modelName, Namespace: ns},
+				Spec: litellmv1alpha1.LiteLLMModelSpec{
+					InstanceRef:   litellmv1alpha1.InstanceRef{Name: instanceName},
+					ModelName:     "x",
+					LiteLLMParams: params,
+				},
+			})
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("mutually exclusive"))
+		}
+	})
+
 	It("credentialRef auth: resolves credential values INLINE plus the credential name", func() {
 		makeSecret(credSecret, "OPENAI_API_KEY", "sk-from-credential")
 		Expect(k8sClient.Create(ctx, &litellmv1alpha1.LiteLLMCredential{
