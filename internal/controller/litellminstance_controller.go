@@ -625,6 +625,17 @@ func (r *LiteLLMInstanceReconciler) reconcileDeployment(ctx context.Context, ins
 		desired.Spec.Template.Annotations[AnnotationSecretHash] = secretHash
 	}
 
+	// Stamp a digest of the rendered proxy config too: LiteLLM only reads it at
+	// startup, so without this a ConfigMap change never reaches running pods.
+	configHash, err := proxyConfigHash(instance, labels, guardrails)
+	if err != nil {
+		return err
+	}
+	if desired.Spec.Template.Annotations == nil {
+		desired.Spec.Template.Annotations = make(map[string]string, 1)
+	}
+	desired.Spec.Template.Annotations[AnnotationConfigHash] = configHash
+
 	var existing appsv1.Deployment
 	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &existing)
 	if apierrors.IsNotFound(err) {
@@ -669,6 +680,7 @@ const autoRollbackPodTemplateAnnotation = "litellm.palena.ai/auto-rollback"
 var operatorManagedPodTemplateAnnotations = map[string]bool{
 	autoRollbackPodTemplateAnnotation: true,
 	AnnotationSecretHash:              true,
+	AnnotationConfigHash:              true,
 }
 
 // preserveExternalPodTemplateAnnotations carries annotations owned by other
