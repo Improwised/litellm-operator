@@ -86,6 +86,29 @@ spec:
               keyAlias:
                 description: Human-readable key alias.
                 type: string
+              keySecretEncryption:
+                description: |-
+                  KeySecretEncryption, when set, stores the minted key in its Secret only as
+                  age ciphertext (data key "api_key.age"), encrypted to the given age
+                  recipients. Anyone who can read Secrets in the namespace then sees only
+                  ciphertext; the key is decrypted outside the cluster with the matching age
+                  identity. The operator never needs the key again after minting, so nothing
+                  in the cluster can decrypt it. Turning this on for an already-minted key
+                  re-encrypts the existing plaintext Secret in place; turning it off again
+                  does not decrypt it (rotate the key instead).
+                properties:
+                  ageRecipients:
+                    description: |-
+                      AgeRecipients are age X25519 public keys ("age1..."). The key can be
+                      decrypted with the identity of any one of them.
+                    items:
+                      pattern: ^age1[02-9ac-hj-np-z]{58}$
+                      type: string
+                    minItems: 1
+                    type: array
+                required:
+                - ageRecipients
+                type: object
               keySecretName:
                 description: |-
                   Name for the Secret that stores the generated API key.

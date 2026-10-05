@@ -202,7 +202,7 @@ func (r *LiteLLMVirtualKeyReconciler) reconcileKey(
 		}
 
 		vk.Status.LiteLLMKeyToken = resp.Token
-		vk.Status.KeySecretRef = &litellmv1alpha1.SecretKeyRef{Name: secretName, Key: "api_key"}
+		vk.Status.KeySecretRef = &litellmv1alpha1.SecretKeyRef{Name: secretName, Key: keySecretDataKeyFor(vk)}
 		vk.Status.IsActive = true
 		vk.Status.Synced = true
 		if err := r.Status().Update(ctx, vk); err != nil {
@@ -290,6 +290,7 @@ var errKeySecretGone = errors.New("key secret no longer exists")
 func keySyncHash(spec litellmv1alpha1.LiteLLMVirtualKeySpec) string {
 	spec.KeySecretName = ""
 	spec.KeySecretTemplate = nil
+	spec.KeySecretEncryption = nil
 	return computeSpecHash(spec)
 }
 
@@ -362,9 +363,13 @@ func (r *LiteLLMVirtualKeyReconciler) reconcileKeySecret(
 				Labels:      desiredLabels,
 				Annotations: desiredAnnotations,
 			},
-			Type:       corev1.SecretTypeOpaque,
-			StringData: map[string]string{"api_key": apiKey},
+			Type: corev1.SecretTypeOpaque,
 		}
+		data, err := encodeKeySecretData(vk, apiKey)
+		if err != nil {
+			return err
+		}
+		secret.Data = data
 		if err := controllerutil.SetControllerReference(vk, secret, r.Scheme); err != nil {
 			return fmt.Errorf("set owner ref on key secret: %w", err)
 		}
@@ -396,8 +401,21 @@ func (r *LiteLLMVirtualKeyReconciler) reconcileKeySecret(
 		changed = true
 	}
 	if apiKey != "" {
-		existing.StringData = map[string]string{"api_key": apiKey}
+		data, err := encodeKeySecretData(vk, apiKey)
+		if err != nil {
+			return err
+		}
+		existing.Data = data
 		changed = true
+	} else if migrated, err := encryptExistingKeySecret(vk, &existing); err != nil {
+		return err
+	} else if migrated {
+		changed = true
+	}
+	if vk.Status.KeySecretRef != nil {
+		if _, ok := existing.Data[keySecretDataKeyFor(vk)]; ok {
+			vk.Status.KeySecretRef.Key = keySecretDataKeyFor(vk)
+		}
 	}
 	if !changed {
 		return nil

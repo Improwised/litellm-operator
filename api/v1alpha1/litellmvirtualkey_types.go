@@ -129,6 +129,17 @@ type LiteLLMVirtualKeySpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Key Secret Template"
 	KeySecretTemplate *KeySecretTemplateSpec `json:"keySecretTemplate,omitempty"`
 
+	// KeySecretEncryption, when set, stores the minted key in its Secret only as
+	// age ciphertext (data key "api_key.age"), encrypted to the given age
+	// recipients. Anyone who can read Secrets in the namespace then sees only
+	// ciphertext; the key is decrypted outside the cluster with the matching age
+	// identity. The operator never needs the key again after minting, so nothing
+	// in the cluster can decrypt it. Turning this on for an already-minted key
+	// re-encrypts the existing plaintext Secret in place; turning it off again
+	// does not decrypt it (rotate the key instead).
+	// +optional
+	KeySecretEncryption *KeySecretEncryptionSpec `json:"keySecretEncryption,omitempty"`
+
 	// Guardrails to activate for this key. Each entry must match the
 	// guardrailName of a LiteLLMGuardrail CR bound to the same instance.
 	// Requires a LiteLLM Enterprise license.
@@ -142,6 +153,15 @@ type LiteLLMVirtualKeySpec struct {
 // reconciled; entries added by other controllers are preserved. Because merging
 // preserves what is already on the Secret, removing an entry here does not remove
 // it from the Secret — delete it from the Secret directly.
+// KeySecretEncryptionSpec configures encryption of a minted key at rest.
+type KeySecretEncryptionSpec struct {
+	// AgeRecipients are age X25519 public keys ("age1..."). The key can be
+	// decrypted with the identity of any one of them.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:Pattern=`^age1[02-9ac-hj-np-z]{58}$`
+	AgeRecipients []string `json:"ageRecipients"`
+}
+
 type KeySecretTemplateSpec struct {
 	// Annotations to apply to the key Secret, for example
 	// reflector.v1.k8s.emberstack.com/reflection-allowed: "true" to have
